@@ -6,6 +6,7 @@ const fs        = require ('fs');
 
 
 let cascadingInspect = (addresses, level, chain) => {
+    //console.error ('cascading', level);
     return new Promise ((resolve, reject) => {
         if (level >= config.levels) {
             resolve ([]);
@@ -16,6 +17,7 @@ let cascadingInspect = (addresses, level, chain) => {
         for (let i = 0; i < addresses.length; i++) {
             promises.push (new Promise ((resolve, reject) => {
                 var node = config.nodes [Math.floor (Math.random () * config.nodes.length)];
+                //console.error ('call',level);
                 request('http://' + node + '/api/transactions?senderId=' + addresses[i], function (err, response, body){
                     if (err || response.statusCode != 200) {
                         return resolve ([]); 
@@ -28,6 +30,7 @@ let cascadingInspect = (addresses, level, chain) => {
 
                     if (data.transactions == null)
                         data.transactions = [];
+                    console.error (data.transactions.length);
 
                     for (let i = 0; i < data.transactions.length; i++) {
                         if (data.transactions[i].height <= 1451520) continue;
@@ -44,6 +47,7 @@ let cascadingInspect = (addresses, level, chain) => {
                                 chain: nchain,
                                 level: level
                             });
+                            //console.error (data.transactions[i]);
                         } else {
                             naddr.push (data.transactions[i].recipientId);
                         }
@@ -52,10 +56,13 @@ let cascadingInspect = (addresses, level, chain) => {
                     var cchain = chain.slice ();
                     cchain.push (addresses[i]);
 
+                    if (level + 1 >= config.levels || naddr.length == 0) 
+                        return resolve (res);
+
                     cascadingInspect (naddr, level+1, cchain).then (txs => {
                         resolve (res.concat (txs));
                     }).catch (() => {
-                        resolve ([]);
+                        resolve (res);
                     });
                 });
             }));   
@@ -65,7 +72,7 @@ let cascadingInspect = (addresses, level, chain) => {
             var total = [];
 
             for (let j = 0; j < data.length; j++)
-                total.concat (data[j]);
+                total = total.concat (data[j]);
 
             resolve (total);
         }).catch (() => {
@@ -79,13 +86,11 @@ let analyzeAddress = (delegate) => {
     return new Promise ((resolve, reject) => {
         console.error ('start for ', delegate.username);
         cascadingInspect ([delegate.address], 0, []).then (txs => {
-            console.error ('end for ', delegate.username);
 
             var node = config.nodes [Math.floor (Math.random () * config.nodes.length)];
 
             request ('http://' + node + '/api/delegates/forging/getForgedByAccount?generatorPublicKey=' + delegate.publicKey, function (error, response, body) {
                 var forged = 0;
-
                 if (!error && response.statusCode == 200) {
 					var data = JSON.parse(body);
 					forged = data.forged / 100000000;
@@ -94,7 +99,7 @@ let analyzeAddress = (delegate) => {
                 var dumped = 0;
 
                 for (var z = 0; z < txs.length; z++)
-                    dumped += txs[z].value;
+                    dumped += txs[z].amount;
 
                 var obb = {
                     delegate: delegate.username, 
@@ -104,8 +109,17 @@ let analyzeAddress = (delegate) => {
                     percentage: dumped / forged * 100,
                     txs: txs
                 };
-                console.error (obb);
-                resolve (obb);
+                console.error ('end for ', delegate.username);
+                
+                if (txs.length > 0)  {
+                    console.error (obb);
+                    fs.writeFile ('result/'+delegate.username+'.json', JSON.stringify (obb), function (err, data) {
+                    });
+                    resolve (obb);
+                }
+
+                else reject ();
+
             });
         }).catch (() => {
             resolve ({
@@ -128,17 +142,18 @@ request('http://' + node + '/api/delegates/?limit=101&offset=0&orderBy=rate:asc'
 	var data = JSON.parse(body);
     var promises = [];
 
-    for (let i = 0; i < data.delegates.length; i++)
+    for (let i = parseInt (process.argv[2] || 0); i < parseInt (process.argv[3] || data.delegates.length); i++)
         promises.push (analyzeAddress (data.delegates[i]));
+
 
     Promise.all (promises).then ((data) => {
         console.error ('End');
         console.log (JSON.stringify (data));
-        process.exit ();
-        fs.writeFile ('result.json', JSON.stringify (data), function (err, data) {
+        //fs.writeFile ('result.json', JSON.stringify (data), function (err, data) {
             //console.log (err);
-        });
+        //});
     }).catch (() => {
+        console.error ('End catch');
     });
 });
 
