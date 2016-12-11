@@ -149,9 +149,9 @@ request('http://' + node + '/api/delegates/?limit=101&offset=0&orderBy=rate:asc'
     Promise.all (promises).then ((data) => {
         console.error ('End');
         console.log (JSON.stringify (data));
-        //fs.writeFile ('result.json', JSON.stringify (data), function (err, data) {
-            //console.log (err);
-        //});
+        fs.writeFile ('result.json', JSON.stringify (data), function (err, data) {
+            console.log (err);
+        });
     }).catch (() => {
         console.error ('End catch');
     });
